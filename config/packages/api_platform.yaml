@@ -1,0 +1,27 @@
+api_platform:
+    title: API
+    version: 1.0.0
+    description: API using Api Platform & Symfony
+
+    # only JSON as available format
+    formats:
+        # jsonapi: ['application/vnd.api+json']
+        json: ['application/json']
+        # jsonld: ['application/ld+json']
+
+    # PATCH only in JSON Merge Patch
+    patch_formats:
+        json: ['application/merge-patch+json']
+
+    # Errors only in RFC7807 (without Hydra)
+    error_formats:
+        jsonproblem: ['application/problem+json']
+
+    defaults:
+        stateless: true
+        cache_headers:
+            vary: ['Content-Type', 'Authorization', 'Origin']
+        # force JSON as input/output by default
+        formats: ['json']
+        # formats: ['jsonapi']
+        # pagination_items_per_page: 25
