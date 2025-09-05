@@ -16,12 +16,14 @@ use ApiPlatform\Metadata\GetCollection;
 use ApiPlatform\Metadata\Post;
 use ApiPlatform\Metadata\Patch;
 // use ApiPlatform\Metadata\Delete;
+use ApiPlatform\Metadata\Link;
 
 // filters
 use ApiPlatform\Metadata\ApiFilter;
 use ApiPlatform\Doctrine\Orm\Filter\BooleanFilter;
 use ApiPlatform\Doctrine\Orm\Filter\RangeFilter;
 use ApiPlatform\Doctrine\Orm\Filter\SearchFilter;
+
 use ApiPlatform\Serializer\Filter\PropertyFilter;
 
 // validators 
@@ -34,17 +36,22 @@ use Symfony\Component\Validator\Constraints as Assert;
     shortName: 'Treasure', // entity name
     description: 'A rare and valuable treasure.', // entity description
     operations: [ // force which methods will appear
-        new Get(uriTemplate: 'treasures/{id}/info'), // change method url
+        new Get(
+            uriTemplate: 'treasures/{id}/info', // change method url
+            normalizationContext: [
+                'groups' => ['treasure:read', 'treasure:item:get'] // override normalization group in get method
+            ]
+        ),
         new GetCollection(),
         new Post(),
         new Patch(),
         // new Delete() // skipped method
     ],
     normalizationContext: [
-        'groups' => ['read'] // force which read-attrubutes will appear
+        'groups' => ['treasure:read'] // force which read-attrubutes will appear
     ],
     denormalizationContext: [
-        'groups' => ['write'] // force which read-attrubutes will appear
+        'groups' => ['treasure:write'] // force which read-attrubutes will appear
     ],
     paginationItemsPerPage: 10
 )]
@@ -55,29 +62,49 @@ use Symfony\Component\Validator\Constraints as Assert;
 // add a properties section to filter specific properties and not whole object
 #[ApiFilter(PropertyFilter::class)]
 
+// filter by a specific property of owner relationship
+#[ApiFilter(SearchFilter::class, properties: ['owner.username' => 'partial'])]
+
+// extra and custom API sub-resource
+#[ApiResource(
+    uriTemplate: '/users/{user_id}/treasures.{_format}',
+    shortName: 'Treasure',
+    operations: [new GetCollection()],
+    uriVariables: [
+        'user_id' => new Link(
+            fromClass: User::class,
+            fromProperty: 'dragonTreasures',
+            description: 'User identifier'
+        )
+    ],
+    normalizationContext: [
+        'groups' => ['treasure:read'] // force which read-attrubutes will appear
+    ]
+)]
+
 class DragonTreasure
 {
     #[ORM\Id]
     #[ORM\GeneratedValue]
     #[ORM\Column]
-    #[Groups(['read'])]
+    #[Groups(['treasure:read', 'user:read'])]
     private ?int $id = null;
 
     #[ORM\Column(length: 255)]
-    #[Groups(['read', 'write'])] // specific in which group will appear
+    #[Groups(['treasure:read', 'treasure:write', 'user:read'])] // specific in which group will appear
     #[ApiFilter(SearchFilter::class, strategy: 'partial')]
     #[Assert\NotBlank] // input validation: not blank
     #[Assert\Length(min: 2, max: 50, maxMessage: 'Describe your loot in 50 characters or less')] // input validation: lenght
     private ?string $name = null;
 
     #[ORM\Column(type: Types::TEXT)]
-    #[Groups(['read'])]
+    #[Groups(['treasure:read', 'user:read'])]
     #[ApiFilter(SearchFilter::class, strategy: 'partial')]
     #[Assert\NotBlank]
     private ?string $description = null;
 
     #[ORM\Column]
-    #[Groups(['read', 'write'])]
+    #[Groups(['treasure:read', 'treasure:write', 'user:read'])]
     #[ApiFilter(RangeFilter::class)]
     #[Assert\GreaterThanOrEqual(0)] // input validation: greater or equal
     private ?int $value = 0;
@@ -87,7 +114,7 @@ class DragonTreasure
      * Estimated value of the treasure, in gold coins.
     */
     #[ORM\Column]
-    #[Groups(['read', 'write'])]
+    #[Groups(['treasure:read', 'treasure:write', 'user:read'])]
     #[Assert\GreaterThanOrEqual(0)] // input validation: greater or equal
     #[Assert\LessThanOrEqual(10)] // input validation: less or equal
     private ?int $coolFactor = 0;
@@ -96,16 +123,19 @@ class DragonTreasure
     private bool $isPublished = false;
 
     #[ORM\Column]
-    #[Groups(['read'])]
+    #[Groups(['treasure:read'])]
     #[ApiFilter(BooleanFilter::class)] // another way to set up a filter
     private \DateTimeImmutable $createdAt;
 
     #[ORM\Column]
-    #[Groups(['read'])]
+    #[Groups(['treasure:read'])]
     private \DateTimeImmutable $updatedAt;
 
     #[ORM\ManyToOne(inversedBy: 'dragonTreasures')]
     #[ORM\JoinColumn(nullable: false)]
+    #[Groups(['treasure:read', 'treasure:write'])]
+    #[ApiFilter(SearchFilter::class, strategy: 'exact')]
+    #[Assert\Valid]
     private ?User $owner = null;
 
     // Construct method
@@ -135,7 +165,7 @@ class DragonTreasure
         return $this->description;
     }
 
-    #[Groups(['read'])]
+    #[Groups(['treasure:read'])]
     public function getShortDescription(): ?string
     {
         return u($this->description)->truncate(40, '...');
@@ -148,7 +178,7 @@ class DragonTreasure
     }
 
     // custom method - It appears as a valid attribute in POST/PATCH
-    #[Groups(['write'])]
+    #[Groups(['treasure:write'])]
     #[SerializedName('description')] // name alias
     public function setTextDescription(string $description): static
     {

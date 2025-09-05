@@ -12,25 +12,43 @@ use Symfony\Component\Security\Core\User\PasswordAuthenticatedUserInterface;
 use Symfony\Component\Security\Core\User\UserInterface;
 use Symfony\Component\Serializer\Annotation\Groups;
 use Symfony\Component\Validator\Constraints as Assert;
+use ApiPlatform\Metadata\Link;
+use ApiPlatform\Metadata\Get;
 
 #[ORM\Entity(repositoryClass: UserRepository::class)]
 #[ORM\UniqueConstraint(name: 'UNIQ_IDENTIFIER_EMAIL', fields: ['email'])]
 #[ApiResource(
-    normalizationContext: ['groups' => ['read']],
-    denormalizationContext: ['groups' => ['write']]
+    normalizationContext: ['groups' => ['user:read']],
+    denormalizationContext: ['groups' => ['user:write']]
 )]
 
 #[UniqueEntity(fields: ['email'], message: 'There is already an account with this email')]
 #[UniqueEntity(fields: ['username'], message: 'There is already an account with this username')]
+
+// extra and custom API sub-resource
+#[ApiResource(
+    uriTemplate: '/treasure/{treasure_id}/owner.{_format}',
+    operations: [new Get()],
+    uriVariables: [
+        'treasure_id' => new Link(
+            fromClass: DragonTreasure::class,
+            fromProperty: 'owner',
+            description: 'Treasure identifier'
+        )
+    ],
+    normalizationContext: ['groups' => ['user:read']]
+)]
+
 class User implements UserInterface, PasswordAuthenticatedUserInterface
 {
     #[ORM\Id]
     #[ORM\GeneratedValue]
     #[ORM\Column]
+    #[Groups(['user:read', 'treasure:item:get'])]
     private ?int $id = null;
 
     #[ORM\Column(length: 180)]
-    #[Groups(['read', 'write'])]
+    #[Groups(['user:read', 'user:write', 'treasure:item:get'])]
     #[Assert\NotBlank]
     #[Assert\Email]
     private ?string $email = null;
@@ -45,18 +63,22 @@ class User implements UserInterface, PasswordAuthenticatedUserInterface
      * @var string The hashed password
      */
     #[ORM\Column]
-    #[Groups(['write'])]
+    #[Groups(['user:write'])]
     private ?string $password = null;
 
     #[ORM\Column(length: 255, unique: true)]
-    #[Groups(['read', 'write'])]
+    #[Groups(['user:read', 'user:write', 'treasure:item:get', 'treasure:write'])]
     #[Assert\NotBlank]
     private ?string $username = null;
 
     /**
      * @var Collection<int, DragonTreasure>
      */
-    #[ORM\OneToMany(targetEntity: DragonTreasure::class, mappedBy: 'owner')]
+    // cascade: ['persist'] allows to cascade save for dragon treasures
+    // orphanRemoval: true removes any orphan treasures
+    #[ORM\OneToMany(targetEntity: DragonTreasure::class, mappedBy: 'owner', cascade: ['persist'], orphanRemoval: true)]
+    #[Groups(['user:read'])]
+    #[Assert\Valid]
     private Collection $dragonTreasures;
 
     public function __construct()
